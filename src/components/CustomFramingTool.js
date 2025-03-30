@@ -1,29 +1,43 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect, Suspense, lazy } from 'react';
 import './CustomFramingTool.css';
+
+// Import catalog data and utility functions
+import { frameCatalog, getFrameById } from '../data/frameCatalog';
+import { calculatePrice, fileToDataUrl, resizeImage } from '../utils/imageUtils';
+
+// Lazy load the 3D visualizer to improve initial load time
+const FrameVisualizer3D = lazy(() => import('./FrameVisualizer3D'));
 
 const CustomFramingTool = () => {
   // State for uploaded image
   const [image, setImage] = useState(null);
+  const [imageAspectRatio, setImageAspectRatio] = useState(1.33); // Default 4:3
   const [dragActive, setDragActive] = useState(false);
   
   // State for frame options
-  const [frameStyle, setFrameStyle] = useState('wood-natural');
+  const [frameStyle, setFrameStyle] = useState('larson-4512'); // Default frame
   const [matColor, setMatColor] = useState('white');
   const [frameWidth, setFrameWidth] = useState(2);
   const [matWidth, setMatWidth] = useState(3);
   
+  // State for artwork dimensions
+  const [dimensions, setDimensions] = useState({ width: 16, height: 20 }); // in inches
+  
+  // State for view mode (2D or 3D)
+  const [viewMode, setViewMode] = useState('2d');
+  
+  // State for filter options
+  const [materialFilter, setMaterialFilter] = useState('all');
+  const [manufacturerFilter, setManufacturerFilter] = useState('all');
+  
+  // State for price
+  const [totalPrice, setTotalPrice] = useState(0);
+  
   // Reference to file input
   const fileInputRef = useRef(null);
   
-  // Frame style options
-  const frameStyles = [
-    { id: 'wood-natural', name: 'Natural Wood', color: '#D2B48C' },
-    { id: 'wood-walnut', name: 'Walnut Wood', color: '#5C4033' },
-    { id: 'wood-black', name: 'Black Wood', color: '#2C2C2C' },
-    { id: 'metal-silver', name: 'Silver Metal', color: '#C0C0C0' },
-    { id: 'metal-gold', name: 'Gold Metal', color: '#FFD700' },
-    { id: 'composite-white', name: 'White Composite', color: '#FFFFFF' },
-  ];
+  // Get the selected frame from catalog
+  const selectedFrame = getFrameById(frameStyle);
   
   // Mat color options
   const matColors = [
@@ -32,6 +46,25 @@ const CustomFramingTool = () => {
     { id: 'grey', name: 'Grey', color: '#ADADAD' },
     { id: 'beige', name: 'Beige', color: '#F5F5DC' },
   ];
+  
+  // Get all available materials and manufacturers for filters
+  const materials = ['all', ...new Set(frameCatalog.map(frame => frame.material))];
+  const manufacturers = ['all', ...new Set(frameCatalog.map(frame => frame.manufacturer))];
+  
+  // Filter frames based on selected filters
+  const filteredFrames = frameCatalog.filter(frame => {
+    const matchesMaterial = materialFilter === 'all' || frame.material === materialFilter;
+    const matchesManufacturer = manufacturerFilter === 'all' || frame.manufacturer === manufacturerFilter;
+    return matchesMaterial && matchesManufacturer;
+  });
+  
+  // Calculate price when options change
+  useEffect(() => {
+    if (selectedFrame) {
+      const price = calculatePrice(dimensions, selectedFrame, matWidth);
+      setTotalPrice(price);
+    }
+  }, [dimensions, selectedFrame, matWidth]);
   
   // Handle drag events
   const handleDrag = (e) => {
@@ -63,17 +96,39 @@ const CustomFramingTool = () => {
     }
   };
   
-  // Handle uploaded file
-  const handleFile = (file) => {
+  // Process uploaded file
+  const handleFile = async (file) => {
     // Check if file is an image
     if (file.type.startsWith('image/')) {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setImage(e.target.result);
-      };
-      reader.readAsDataURL(file);
+      try {
+        // Convert file to data URL
+        const dataUrl = await fileToDataUrl(file);
+        
+        // Resize image if it's too large
+        const resizedImage = await resizeImage(dataUrl, 1200, 1200);
+        
+        // Calculate aspect ratio
+        const img = new Image();
+        img.onload = () => {
+          const aspectRatio = img.width / img.height;
+          setImageAspectRatio(aspectRatio);
+          
+          // Update dimensions based on aspect ratio
+          setDimensions(prev => ({
+            width: Math.round(prev.height * aspectRatio * 10) / 10,
+            height: prev.height
+          }));
+        };
+        img.src = resizedImage;
+        
+        // Set the image
+        setImage(resizedImage);
+      } catch (error) {
+        console.error('Error processing image:', error);
+        alert('There was an error processing your image. Please try another file.');
+      }
     } else {
-      alert('Please upload an image file');
+      alert('Please upload an image file (JPEG, PNG, GIF, etc.)');
     }
   };
   
@@ -82,22 +137,38 @@ const CustomFramingTool = () => {
     fileInputRef.current.click();
   };
   
-  // Get the selected frame style color
-  const getSelectedFrameColor = () => {
-    const selected = frameStyles.find(style => style.id === frameStyle);
-    return selected ? selected.color : '#D2B48C';
-  };
-  
   // Get the selected mat color
   const getSelectedMatColor = () => {
     const selected = matColors.find(color => color.id === matColor);
     return selected ? selected.color : '#FFFFFF';
   };
   
+  // Handle dimension change
+  const handleDimensionChange = (dimension, value) => {
+    if (value <= 0) return;
+    
+    if (dimension === 'width') {
+      setDimensions({
+        width: value,
+        height: Math.round((value / imageAspectRatio) * 10) / 10
+      });
+    } else {
+      setDimensions({
+        width: Math.round((value * imageAspectRatio) * 10) / 10,
+        height: value
+      });
+    }
+  };
+  
   return (
     <div className="framing-tool-container">
+      <div className="framing-tool-header">
+        <h3>Design Your Custom Frame</h3>
+        <p>Upload your image, select frame options, and see a preview of your framed artwork</p>
+      </div>
+      
       <div className="framing-tool-grid">
-        {/* Left Column - Image Upload */}
+        {/* Left Column - Image Upload & Dimensions */}
         <div className="framing-tool-column upload-column">
           <h3>1. Upload Your Image</h3>
           <div 
@@ -109,130 +180,4 @@ const CustomFramingTool = () => {
           >
             {!image ? (
               <div className="upload-placeholder">
-                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-                  <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                  <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                  <polyline points="21 15 16 10 5 21"></polyline>
-                </svg>
-                <p>Drag & drop an image or</p>
-                <button className="btn btn-secondary" onClick={onButtonClick}>Browse Files</button>
-                <input 
-                  ref={fileInputRef}
-                  type="file"
-                  onChange={handleChange}
-                  accept="image/*"
-                  style={{ display: 'none' }}
-                />
-              </div>
-            ) : (
-              <div className="uploaded-image-container">
-                <img src={image} alt="Uploaded artwork" className="uploaded-image" />
-                <button className="btn btn-secondary change-image-btn" onClick={onButtonClick}>
-                  Change Image
-                </button>
-              </div>
-            )}
-          </div>
-        </div>
-        
-        {/* Center Column - Frame Options */}
-        <div className="framing-tool-column options-column">
-          <h3>2. Choose Frame Options</h3>
-          
-          <div className="frame-option-group">
-            <h4>Frame Style</h4>
-            <div className="frame-options">
-              {frameStyles.map((style) => (
-                <div 
-                  key={style.id}
-                  className={`frame-option ${frameStyle === style.id ? 'selected' : ''}`}
-                  onClick={() => setFrameStyle(style.id)}
-                >
-                  <div className="frame-color-preview" style={{ backgroundColor: style.color }}></div>
-                  <span>{style.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <div className="frame-option-group">
-            <h4>Mat Color</h4>
-            <div className="mat-options">
-              {matColors.map((color) => (
-                <div 
-                  key={color.id}
-                  className={`mat-option ${matColor === color.id ? 'selected' : ''}`}
-                  onClick={() => setMatColor(color.id)}
-                >
-                  <div className="mat-color-preview" style={{ backgroundColor: color.color }}></div>
-                  <span>{color.name}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          <div className="frame-option-group dimensions">
-            <h4>Dimensions</h4>
-            <div className="dimension-inputs">
-              <div className="input-group">
-                <label htmlFor="frame-width">Frame Width (inches)</label>
-                <input 
-                  type="number" 
-                  id="frame-width" 
-                  min="0.5" 
-                  max="4" 
-                  step="0.25" 
-                  value={frameWidth} 
-                  onChange={(e) => setFrameWidth(parseFloat(e.target.value))} 
-                  className="form-control"
-                />
-              </div>
-              <div className="input-group">
-                <label htmlFor="mat-width">Mat Width (inches)</label>
-                <input 
-                  type="number" 
-                  id="mat-width" 
-                  min="0" 
-                  max="6" 
-                  step="0.25" 
-                  value={matWidth} 
-                  onChange={(e) => setMatWidth(parseFloat(e.target.value))} 
-                  className="form-control"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        {/* Right Column - Preview */}
-        <div className="framing-tool-column preview-column">
-          <h3>3. Preview Your Frame</h3>
-          <div className="frame-preview">
-            {image ? (
-              <div 
-                className="framed-image" 
-                style={{ 
-                  borderWidth: `${frameWidth}rem`,
-                  borderColor: getSelectedFrameColor(),
-                  padding: `${matWidth}rem`,
-                  backgroundColor: getSelectedMatColor(),
-                }}
-              >
-                <img src={image} alt="Your framed artwork" />
-              </div>
-            ) : (
-              <div className="preview-placeholder">
-                <p>Upload an image to see preview</p>
-              </div>
-            )}
-          </div>
-          <button className="btn btn-primary add-to-cart-btn" disabled={!image}>
-            Add To Cart
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-export default CustomFramingTool;
+                <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke
