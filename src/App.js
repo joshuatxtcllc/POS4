@@ -1,5 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import './App.css';
+
+// Import context providers
+import { ThemeProvider, useTheme } from './context/ThemeContext';
+import { AuthProvider } from './context/AuthContext';
+import { CartProvider } from './context/CartContext';
 
 // Import components
 import Header from './components/Header';
@@ -10,30 +15,16 @@ import Inspiration from './components/Inspiration';
 import About from './components/About';
 import Contact from './components/Contact';
 import Footer from './components/Footer';
+import Cart from './components/Cart';
+import AuthModal from './components/AuthModal';
 
-function App() {
-  // State for dark/light mode
-  const [darkMode, setDarkMode] = useState(false);
-
-  // Effect to apply theme to the document
-  useEffect(() => {
-    if (darkMode) {
-      document.body.classList.add('dark-theme');
-      document.body.classList.remove('light-theme');
-    } else {
-      document.body.classList.add('light-theme');
-      document.body.classList.remove('dark-theme');
-    }
-  }, [darkMode]);
-
-  // Toggle theme function
-  const toggleTheme = () => {
-    setDarkMode(!darkMode);
-  };
-
+// Main app component that uses the theme context
+function MainApp() {
+  const { darkMode } = useTheme();
+  
   return (
     <div className={`app ${darkMode ? 'dark-theme' : 'light-theme'}`}>
-      <Header darkMode={darkMode} toggleTheme={toggleTheme} />
+      <Header />
       <main>
         <Hero />
         <section id="custom-framing" className="section">
@@ -68,7 +59,22 @@ function App() {
         </section>
       </main>
       <Footer />
+      <Cart />
+      <AuthModal />
     </div>
+  );
+}
+
+// Wrapper component that provides all contexts
+function App() {
+  return (
+    <ThemeProvider>
+      <AuthProvider>
+        <CartProvider>
+          <MainApp />
+        </CartProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
 
