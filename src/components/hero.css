@@ -1,0 +1,12 @@
+.hero {
+  height: 100vh;
+  min-height: 600px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background-image: url('/api/placeholder/1920/1080');
+  background-size: cover;
+  background-position: center;
+  margin-top:
